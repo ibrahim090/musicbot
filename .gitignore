@@ -42,11 +42,11 @@ env/
 *.webm
 *.m4a
 *.opus
+*.wav
 
 # Operating System
 .DS_Store
 Thumbs.db
 
 # Project Specific
-*.wav
 cookies.txt 
