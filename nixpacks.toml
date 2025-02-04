@@ -10,7 +10,9 @@ aptPkgs = [
     "libnacl-dev",
     "ca-certificates",
     "openssl",
-    "wget"
+    "wget",
+    "gcc",
+    "g++"
 ]
 
 [phases.install]
