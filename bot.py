@@ -6,6 +6,7 @@ import yt_dlp
 import logging
 import asyncio
 import tempfile
+import platform
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -42,11 +43,17 @@ YTDL_OPTIONS = {
     'logtostderr': False,
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'auto',
+    'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
     'force-ipv4': True,
     'cachedir': False,
-    'cookies-from-browser': 'chrome',
+    'cookies-from-browser': ['chrome', 'firefox', 'edge', 'opera', 'brave', 'chromium'],
+    'extractor-args': {
+        'youtube': {
+            'player_skip': ['webpage', 'configs'],
+            'skip': ['dash', 'hls']
+        }
+    },
     'geo-bypass': True,
     'geo-bypass-country': 'US'
 }
@@ -61,6 +68,9 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.data = data
         self.title = data.get('title')
         self.url = data.get('url')
+        self.duration = data.get('duration')
+        self.thumbnail = data.get('thumbnail')
+        self.webpage_url = data.get('webpage_url')
 
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
@@ -75,31 +85,49 @@ class YTDLSource(discord.PCMVolumeTransformer):
         ytdl_opts['cookiefile'] = cookies_path
         
         try:
-            # First try to extract cookies from Chrome
-            print("Attempting to extract cookies from Chrome...")
-            with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
+            # Try with all browsers
+            print("Attempting to extract cookies from browsers...")
+            for browser in ['chrome', 'firefox', 'edge', 'opera', 'brave', 'chromium']:
                 try:
-                    # Extract video info
-                    data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+                    browser_opts = dict(ytdl_opts)
+                    browser_opts['cookies-from-browser'] = browser
                     
-                    if 'entries' in data:
-                        data = data['entries'][0]
+                    with yt_dlp.YoutubeDL(browser_opts) as ytdl:
+                        # Check if URL is a search query
+                        if not ('youtube.com' in url or 'youtu.be' in url):
+                            print(f"Searching YouTube using {browser} cookies...")
+                            url = f"ytsearch:{url}"
 
-                    filename = data['url'] if stream else ytdl.prepare_filename(data)
-                    return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
-                    
+                        # Extract video info
+                        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+                        
+                        if 'entries' in data:
+                            data = data['entries'][0]
+
+                        filename = data['url'] if stream else ytdl.prepare_filename(data)
+                        print(f"Successfully extracted info using {browser} cookies")
+                        return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
+                        
                 except Exception as e:
-                    print(f"Error with Chrome cookies: {str(e)}")
-                    # If Chrome fails, try without cookies
-                    ytdl_opts.pop('cookies-from-browser', None)
-                    ytdl_opts.pop('cookiefile', None)
-                    data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
-                    
-                    if 'entries' in data:
-                        data = data['entries'][0]
+                    print(f"Error with {browser} cookies: {str(e)}")
+                    continue
+            
+            # If all browsers fail, try without cookies
+            print("All browsers failed, trying without cookies...")
+            ytdl_opts.pop('cookies-from-browser', None)
+            ytdl_opts.pop('cookiefile', None)
+            
+            with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
+                if not ('youtube.com' in url or 'youtu.be' in url):
+                    url = f"ytsearch:{url}"
+                
+                data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+                
+                if 'entries' in data:
+                    data = data['entries'][0]
 
-                    filename = data['url'] if stream else ytdl.prepare_filename(data)
-                    return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
+                filename = data['url'] if stream else ytdl.prepare_filename(data)
+                return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
                     
         except Exception as e:
             print(f"Error in YTDLSource.from_url: {str(e)}")
@@ -117,8 +145,8 @@ async def on_ready():
     for guild in bot.guilds:
         print(f'- {guild.name}')
 
-@bot.command(name='play', help='تشغيل مقطع صوتي')
-async def play(ctx, *, url):
+@bot.command(name='play', help='تشغيل مقطع صوتي (رابط أو بحث)')
+async def play(ctx, *, query):
     try:
         # Check if user is in voice channel
         if not ctx.message.author.voice:
@@ -135,56 +163,74 @@ async def play(ctx, *, url):
         async with ctx.typing():
             try:
                 # Send status message
-                status_msg = await ctx.send("جاري تحميل المقطع...")
+                status_msg = await ctx.send("🔍 جاري البحث...")
 
                 # Get player
-                player = await YTDLSource.from_url(url, loop=bot.loop, stream=True)
+                player = await YTDLSource.from_url(query, loop=bot.loop, stream=True)
+                
+                # Create embed
+                embed = discord.Embed(
+                    title="🎵 جاري التشغيل",
+                    description=f"**{player.title}**",
+                    color=discord.Color.green()
+                )
+                
+                if player.thumbnail:
+                    embed.set_thumbnail(url=player.thumbnail)
+                
+                if player.duration:
+                    minutes = player.duration // 60
+                    seconds = player.duration % 60
+                    embed.add_field(name="المدة", value=f"{minutes}:{seconds:02d}", inline=True)
+                
+                if player.webpage_url:
+                    embed.add_field(name="الرابط", value=f"[YouTube]({player.webpage_url})", inline=True)
                 
                 # Play audio
                 ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
 
                 # Update status message
-                await status_msg.edit(content=f'**جاري تشغيل:** {player.title}')
+                await status_msg.edit(content=None, embed=embed)
                 
             except Exception as e:
-                await ctx.send(f"حدث خطأ: {str(e)}")
+                await ctx.send(f"❌ حدث خطأ: {str(e)}")
                 print(f"Error in play command: {str(e)}")
 
     except Exception as e:
-        await ctx.send(f"حدث خطأ: {str(e)}")
+        await ctx.send(f"❌ حدث خطأ: {str(e)}")
         print(f"Error in play command: {str(e)}")
 
 @bot.command(name='pause', help='إيقاف مؤقت')
 async def pause(ctx):
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.pause()
-        await ctx.send("تم الإيقاف المؤقت ⏸️")
+        await ctx.send("⏸️ تم الإيقاف المؤقت")
     else:
-        await ctx.send("لا يوجد شيء قيد التشغيل!")
+        await ctx.send("❌ لا يوجد شيء قيد التشغيل!")
 
 @bot.command(name='resume', help='استئناف التشغيل')
 async def resume(ctx):
     if ctx.voice_client and ctx.voice_client.is_paused():
         ctx.voice_client.resume()
-        await ctx.send("تم استئناف التشغيل ▶️")
+        await ctx.send("▶️ تم استئناف التشغيل")
     else:
-        await ctx.send("لا يوجد شيء متوقف مؤقتاً!")
+        await ctx.send("❌ لا يوجد شيء متوقف مؤقتاً!")
 
 @bot.command(name='stop', help='إيقاف التشغيل')
 async def stop(ctx):
     if ctx.voice_client:
         ctx.voice_client.stop()
-        await ctx.send("تم إيقاف التشغيل ⏹️")
+        await ctx.send("⏹️ تم إيقاف التشغيل")
     else:
-        await ctx.send("لا يوجد شيء قيد التشغيل!")
+        await ctx.send("❌ لا يوجد شيء قيد التشغيل!")
 
 @bot.command(name='leave', help='مغادرة القناة الصوتية')
 async def leave(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
-        await ctx.send("تمت المغادرة 👋")
+        await ctx.send("👋 تمت المغادرة")
     else:
-        await ctx.send("لست في قناة صوتية!")
+        await ctx.send("❌ لست في قناة صوتية!")
 
 print("Starting bot...")
 bot.run(token) 
