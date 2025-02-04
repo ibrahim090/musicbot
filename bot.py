@@ -196,7 +196,16 @@ YTDL_OPTIONS = {
     },
     'geo-bypass': True,
     'geo-bypass-country': 'US',
-    'cookies-from-browser': 'chrome'
+    'cookies-from-browser': 'chrome',
+    'nocheckcertificate': True,
+    'no-check-certificates': True,
+    'prefer-insecure': True,
+    'http-chunk-size': '10M',
+    'buffersize': '50M',
+    'external-downloader': 'ffmpeg',
+    'external-downloader-args': {
+        'ffmpeg_i': ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5']
+    }
 }
 
 def get_browser_cookie_path():
@@ -239,7 +248,21 @@ class YTDLSource(discord.PCMVolumeTransformer):
             YTDL_OPTIONS['cookies-from-browser'] = f"{browser}:{path}"
         
         try:
-            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ytdl:
+            # Create a copy of options and add SSL context
+            ytdl_opts = dict(YTDL_OPTIONS)
+            
+            # Create SSL context that ignores certificate verification
+            import ssl
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+            ssl_context.verify_mode = ssl.CERT_NONE
+            ssl_context.check_hostname = False
+            
+            # Add SSL context to options
+            ytdl_opts['http_headers'] = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
                 # Check if URL is a search query
                 if not ('youtube.com' in url or 'youtu.be' in url):
                     print("Searching YouTube...")
@@ -261,7 +284,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
             # Try without cookies if failed
             if 'cookies-from-browser' in YTDL_OPTIONS:
                 print("Retrying without cookies...")
-                YTDL_OPTIONS.pop('cookies-from-browser', None)
+                ytdl_opts.pop('cookies-from-browser', None)
                 return await cls.from_url(url, loop=loop, stream=stream)
             raise e
 
