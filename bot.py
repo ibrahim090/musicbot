@@ -54,26 +54,39 @@ SPOTIFY_ALBUM_URL_REGEX = r'https?://open\.spotify\.com/album/([a-zA-Z0-9]+)'
 async def get_spotify_track_info(url):
     """Get track information from Spotify URL"""
     if not sp:
-        print("Spotify client not initialized")
+        print("Spotify client not initialized - checking credentials")
+        if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+            print("Missing Spotify credentials")
+            return None
+        else:
+            print(f"Credentials present but client failed to initialize")
         return None
         
     try:
         # Extract track ID from URL
         track_match = re.match(SPOTIFY_TRACK_URL_REGEX, url)
         if not track_match:
-            print("Invalid Spotify track URL")
+            print(f"Invalid Spotify track URL format: {url}")
             return None
             
         track_id = track_match.group(1)
-        print(f"Getting track info for ID: {track_id}")
-        track_info = sp.track(track_id)
+        print(f"Attempting to get track info for ID: {track_id}")
+        
+        try:
+            track_info = sp.track(track_id)
+            print("Successfully retrieved track info from Spotify")
+        except spotipy.exceptions.SpotifyException as e:
+            print(f"Spotify API error: {str(e)}")
+            if "not found" in str(e).lower():
+                print("Track not found - it may be unavailable in your region or removed")
+            return None
         
         # Format artist and track name for YouTube search
         artists = ", ".join([artist['name'] for artist in track_info['artists']])
         track_name = track_info['name']
         search_query = f"{artists} - {track_name} official audio"
         
-        print(f"Search query: {search_query}")
+        print(f"Generated search query: {search_query}")
         
         return {
             'search_query': search_query,
@@ -84,7 +97,7 @@ async def get_spotify_track_info(url):
             'album_art': track_info['album']['images'][0]['url'] if track_info['album']['images'] else None
         }
     except Exception as e:
-        print(f"Error getting Spotify track info: {str(e)}")
+        print(f"Unexpected error getting Spotify track info: {str(e)}")
         return None
 
 async def get_spotify_playlist_tracks(url):
@@ -320,43 +333,46 @@ async def play(ctx, *, query):
                     if 'track' in query:
                         # Handle single Spotify track
                         track_info = await get_spotify_track_info(query)
-                        if track_info:
-                            # Update status message
-                            await status_msg.edit(content=f"🎵 تم العثور على: {track_info['track_name']} - {track_info['artists']}\n⏳ جاري التحضير...")
-                            
-                            try:
-                                # Get player using the search query
-                                player = await YTDLSource.from_url(track_info['search_query'], loop=bot.loop, stream=True)
-                                
-                                # Create rich embed
-                                embed = discord.Embed(
-                                    title="🎵 جاري التشغيل من Spotify",
-                                    description=f"**{track_info['track_name']}**\nبواسطة {track_info['artists']}",
-                                    color=discord.Color.green()
-                                )
-                                
-                                if track_info['album_art']:
-                                    embed.set_thumbnail(url=track_info['album_art'])
-                                
-                                embed.add_field(name="الألبوم", value=track_info['album_name'], inline=True)
-                                minutes = track_info['duration_ms'] // 60000
-                                seconds = (track_info['duration_ms'] % 60000) // 1000
-                                embed.add_field(name="المدة", value=f"{minutes}:{seconds:02d}", inline=True)
-                                
-                                # Play audio
-                                ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
-                                
-                                # Update status message
-                                await status_msg.edit(content=None, embed=embed)
-                                
-                            except Exception as e:
-                                print(f"Error playing track: {str(e)}")
-                                await ctx.send(f"❌ حدث خطأ أثناء تشغيل المقطع: {str(e)}")
-                            
-                        else:
-                            await status_msg.edit(content="❌ لم يتم العثور على المقطع في Spotify. تأكد من صحة الرابط وأن المقطع متاح في منطقتك.")
+                        if not track_info:
+                            error_msg = "❌ لم يتم العثور على المقطع في Spotify. تأكد من:\n"
+                            error_msg += "1️⃣ صحة الرابط\n"
+                            error_msg += "2️⃣ أن المقطع متاح في منطقتك\n"
+                            error_msg += "3️⃣ أن المقطع لم يتم إزالته من Spotify"
+                            await status_msg.edit(content=error_msg)
                             return
-                    
+                        
+                        # Update status message
+                        await status_msg.edit(content=f"🎵 تم العثور على: {track_info['track_name']} - {track_info['artists']}\n⏳ جاري التحضير...")
+                        
+                        try:
+                            # Get player using the search query
+                            player = await YTDLSource.from_url(track_info['search_query'], loop=bot.loop, stream=True)
+                            
+                            # Create rich embed
+                            embed = discord.Embed(
+                                title="🎵 جاري التشغيل من Spotify",
+                                description=f"**{track_info['track_name']}**\nبواسطة {track_info['artists']}",
+                                color=discord.Color.green()
+                            )
+                            
+                            if track_info['album_art']:
+                                embed.set_thumbnail(url=track_info['album_art'])
+                            
+                            embed.add_field(name="الألبوم", value=track_info['album_name'], inline=True)
+                            minutes = track_info['duration_ms'] // 60000
+                            seconds = (track_info['duration_ms'] % 60000) // 1000
+                            embed.add_field(name="المدة", value=f"{minutes}:{seconds:02d}", inline=True)
+                            
+                            # Play audio
+                            ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
+                            
+                            # Update status message
+                            await status_msg.edit(content=None, embed=embed)
+                            
+                        except Exception as e:
+                            print(f"Error playing track: {str(e)}")
+                            await ctx.send(f"❌ حدث خطأ أثناء تشغيل المقطع: {str(e)}")
+                        
                     elif 'playlist' in query:
                         # Handle Spotify playlist
                         playlist_info = await get_spotify_playlist_tracks(query)
