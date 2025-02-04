@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "python3.11 -m venv /opt/venv && . /opt/venv/bin/activate && update-ca-certificates --fresh && export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && pip install --upgrade pip certifi && pip install wheel && pip install -r requirements.txt && pip install -e . && yt-dlp --update"
+buildCommand = "python3.11 -m venv /opt/venv && . /opt/venv/bin/activate && update-ca-certificates --fresh && export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && pip install --upgrade pip certifi && pip install wheel && pip install -r requirements.txt && pip install -e ."
 
 [deploy]
 startCommand = ". /opt/venv/bin/activate && export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && PYTHONPATH=/app python src/bot.py"
@@ -11,7 +11,7 @@ healthcheckTimeout = 100
 [build.env]
 PYTHON_VERSION = "3.11.7"
 NIXPACKS_PYTHON_VERSION = "3.11.7"
-PATH = "/opt/venv/bin:$PATH"
+PATH = "/opt/venv/bin:/usr/local/bin:$PATH"
 PYTHONPATH = "/app"
 REQUESTS_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt"
