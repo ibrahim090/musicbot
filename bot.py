@@ -9,6 +9,9 @@ import tempfile
 import platform
 import json
 from pathlib import Path
+import re
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -19,12 +22,94 @@ logger.setLevel(logging.INFO)
 print("Loading environment variables...")
 load_dotenv()
 
-# Get the token
+# Get tokens
 token = os.getenv('DISCORD_TOKEN')
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+
 if not token:
-    print("Error: No token found in .env file!")
+    print("Error: No Discord token found in .env file!")
     exit(1)
-print(f"Token loaded: {token[:20]}...")
+print(f"Discord token loaded: {token[:20]}...")
+
+# Initialize Spotify client if credentials are available
+sp = None
+if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
+    try:
+        sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET
+        ))
+        print("Spotify client initialized successfully")
+    except Exception as e:
+        print(f"Error initializing Spotify client: {str(e)}")
+else:
+    print("No Spotify credentials found, Spotify support will be limited")
+
+# Regular expressions for Spotify URLs
+SPOTIFY_TRACK_URL_REGEX = r'https?://open\.spotify\.com/track/([a-zA-Z0-9]+)'
+SPOTIFY_PLAYLIST_URL_REGEX = r'https?://open\.spotify\.com/playlist/([a-zA-Z0-9]+)'
+SPOTIFY_ALBUM_URL_REGEX = r'https?://open\.spotify\.com/album/([a-zA-Z0-9]+)'
+
+async def get_spotify_track_info(url):
+    """Get track information from Spotify URL"""
+    if not sp:
+        return None
+        
+    try:
+        # Extract track ID from URL
+        track_match = re.match(SPOTIFY_TRACK_URL_REGEX, url)
+        if not track_match:
+            return None
+            
+        track_id = track_match.group(1)
+        track_info = sp.track(track_id)
+        
+        # Format artist and track name for YouTube search
+        artists = ", ".join([artist['name'] for artist in track_info['artists']])
+        track_name = track_info['name']
+        search_query = f"{artists} - {track_name}"
+        
+        return {
+            'search_query': search_query,
+            'track_name': track_name,
+            'artists': artists,
+            'duration_ms': track_info['duration_ms'],
+            'album_name': track_info['album']['name'],
+            'album_art': track_info['album']['images'][0]['url'] if track_info['album']['images'] else None
+        }
+    except Exception as e:
+        print(f"Error getting Spotify track info: {str(e)}")
+        return None
+
+async def get_spotify_playlist_tracks(url):
+    """Get all tracks from a Spotify playlist"""
+    if not sp:
+        return None
+        
+    try:
+        # Extract playlist ID from URL
+        playlist_match = re.match(SPOTIFY_PLAYLIST_URL_REGEX, url)
+        if not playlist_match:
+            return None
+            
+        playlist_id = playlist_match.group(1)
+        results = sp.playlist_tracks(playlist_id)
+        tracks = []
+        
+        for item in results['items']:
+            track = item['track']
+            artists = ", ".join([artist['name'] for artist in track['artists']])
+            tracks.append({
+                'search_query': f"{artists} - {track['name']}",
+                'track_name': track['name'],
+                'artists': artists
+            })
+            
+        return tracks
+    except Exception as e:
+        print(f"Error getting Spotify playlist: {str(e)}")
+        return None
 
 # FFmpeg options
 FFMPEG_OPTIONS = {
@@ -158,7 +243,7 @@ async def on_ready():
     for guild in bot.guilds:
         print(f'- {guild.name}')
 
-@bot.command(name='play', help='تشغيل مقطع صوتي (رابط أو بحث)')
+@bot.command(name='play', help='تشغيل مقطع صوتي (رابط يوتيوب/سبوتيفاي أو بحث)')
 async def play(ctx, *, query):
     try:
         # Check if user is in voice channel
@@ -175,29 +260,80 @@ async def play(ctx, *, query):
 
         async with ctx.typing():
             try:
-                # Send status message
+                # Send initial status message
                 status_msg = await ctx.send("🔍 جاري البحث...")
-
-                # Get player
-                player = await YTDLSource.from_url(query, loop=bot.loop, stream=True)
                 
-                # Create embed
-                embed = discord.Embed(
-                    title="🎵 جاري التشغيل",
-                    description=f"**{player.title}**",
-                    color=discord.Color.green()
-                )
-                
-                if player.thumbnail:
-                    embed.set_thumbnail(url=player.thumbnail)
-                
-                if player.duration:
-                    minutes = player.duration // 60
-                    seconds = player.duration % 60
-                    embed.add_field(name="المدة", value=f"{minutes}:{seconds:02d}", inline=True)
-                
-                if player.webpage_url:
-                    embed.add_field(name="الرابط", value=f"[YouTube]({player.webpage_url})", inline=True)
+                # Check if query is a Spotify URL
+                if 'open.spotify.com' in query:
+                    if 'track' in query:
+                        # Handle single Spotify track
+                        track_info = await get_spotify_track_info(query)
+                        if track_info:
+                            # Update status message
+                            await status_msg.edit(content=f"🎵 تم العثور على: {track_info['track_name']} - {track_info['artists']}\n⏳ جاري التحضير...")
+                            # Get player using the search query
+                            player = await YTDLSource.from_url(track_info['search_query'], loop=bot.loop, stream=True)
+                            
+                            # Create rich embed
+                            embed = discord.Embed(
+                                title="🎵 جاري التشغيل من Spotify",
+                                description=f"**{track_info['track_name']}**\nبواسطة {track_info['artists']}",
+                                color=discord.Color.green()
+                            )
+                            
+                            if track_info['album_art']:
+                                embed.set_thumbnail(url=track_info['album_art'])
+                            
+                            embed.add_field(name="الألبوم", value=track_info['album_name'], inline=True)
+                            minutes = track_info['duration_ms'] // 60000
+                            seconds = (track_info['duration_ms'] % 60000) // 1000
+                            embed.add_field(name="المدة", value=f"{minutes}:{seconds:02d}", inline=True)
+                            
+                        else:
+                            await ctx.send("❌ لم يتم العثور على المقطع في Spotify")
+                            return
+                    
+                    elif 'playlist' in query:
+                        await status_msg.edit(content="⏳ جاري تحميل قائمة التشغيل من Spotify...")
+                        tracks = await get_spotify_playlist_tracks(query)
+                        if not tracks:
+                            await ctx.send("❌ لم يتم العثور على قائمة التشغيل في Spotify")
+                            return
+                            
+                        # For now, just play the first track
+                        track = tracks[0]
+                        await status_msg.edit(content=f"🎵 تم العثور على قائمة التشغيل\n⏳ جاري تحضير: {track['track_name']}")
+                        player = await YTDLSource.from_url(track['search_query'], loop=bot.loop, stream=True)
+                        
+                        # Create embed for playlist
+                        embed = discord.Embed(
+                            title="🎵 جاري التشغيل من قائمة Spotify",
+                            description=f"**{track['track_name']}**\nبواسطة {track['artists']}",
+                            color=discord.Color.green()
+                        )
+                        embed.set_footer(text=f"المقطع 1 من {len(tracks)}")
+                        
+                else:
+                    # Regular YouTube playback
+                    player = await YTDLSource.from_url(query, loop=bot.loop, stream=True)
+                    
+                    # Create regular embed
+                    embed = discord.Embed(
+                        title="🎵 جاري التشغيل",
+                        description=f"**{player.title}**",
+                        color=discord.Color.green()
+                    )
+                    
+                    if player.thumbnail:
+                        embed.set_thumbnail(url=player.thumbnail)
+                    
+                    if player.duration:
+                        minutes = player.duration // 60
+                        seconds = player.duration % 60
+                        embed.add_field(name="المدة", value=f"{minutes}:{seconds:02d}", inline=True)
+                    
+                    if player.webpage_url:
+                        embed.add_field(name="الرابط", value=f"[YouTube]({player.webpage_url})", inline=True)
                 
                 # Play audio
                 ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
