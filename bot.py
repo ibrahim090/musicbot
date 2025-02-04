@@ -40,7 +40,24 @@ ytdl_format_options = {
     'no_warnings': False,  # Changed to False for more logs
     'default_search': 'auto',
     'source_address': '0.0.0.0',
+    # Add these options to bypass age restriction and other limitations
+    'no_check_certificate': True,
+    'http_chunk_size': 10485760,
+    'extractor_retries': 3,
+    'socket_timeout': 30,
+    'external_downloader_args': [],
+    'youtube_include_dash_manifest': False,
+    'cachedir': False
 }
+
+# Create a custom HTTP header to mimic a web browser
+custom_headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-us,en;q=0.5',
+    'Sec-Fetch-Mode': 'navigate',
+}
+ytdl_format_options['http_headers'] = custom_headers
 
 ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
