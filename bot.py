@@ -6,9 +6,9 @@ import yt_dlp as youtube_dl
 import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG for more detailed logs
 logger = logging.getLogger('discord')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)  # Changed to DEBUG for more detailed logs
 
 # Load environment variables
 print("Loading environment variables...")
@@ -35,9 +35,9 @@ ytdl_format_options = {
     'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': False,
-    'logtostderr': False,
-    'quiet': True,
-    'no_warnings': True,
+    'logtostderr': True,  # Changed to True for more logs
+    'quiet': False,  # Changed to False for more logs
+    'no_warnings': False,  # Changed to False for more logs
     'default_search': 'auto',
     'source_address': '0.0.0.0',
 }
@@ -91,27 +91,43 @@ async def play(ctx, *, url: str):
 
     if not ctx.voice_client:
         print("Bot not in voice channel, joining now...")
-        await ctx.author.voice.channel.connect()
+        try:
+            await ctx.author.voice.channel.connect()
+            print("Successfully joined voice channel")
+        except Exception as e:
+            print(f"Error joining voice channel: {str(e)}")
+            await ctx.send("حدث خطأ أثناء الانضمام للقناة الصوتية!")
+            return
 
     try:
         async with ctx.typing():
             print("Extracting video info...")
-            # Get video info and stream URL
-            data = await bot.loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
-            
-            if 'entries' in data:
-                # Take first item from a playlist
-                data = data['entries'][0]
+            try:
+                # Get video info and stream URL
+                data = await bot.loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
+                print("Successfully extracted video info")
+                
+                if 'entries' in data:
+                    # Take first item from a playlist
+                    data = data['entries'][0]
 
-            stream_url = data['url']
-            title = data['title']
-            print(f"Got stream URL for: {title}")
+                stream_url = data['url']
+                title = data['title']
+                print(f"Got stream URL for: {title}")
 
-            ctx.voice_client.stop()
-            voice_client = ctx.voice_client
-            print("Starting playback...")
-            voice_client.play(discord.FFmpegPCMAudio(executable=FFMPEG_PATH, source=stream_url, **ffmpeg_options))
-            await ctx.send(f'**جاري تشغيل:** {title}')
+                ctx.voice_client.stop()
+                voice_client = ctx.voice_client
+                print(f"Starting playback with FFmpeg at path: {FFMPEG_PATH}")
+                try:
+                    voice_client.play(discord.FFmpegPCMAudio(executable=FFMPEG_PATH, source=stream_url, **ffmpeg_options))
+                    print("Successfully started playback")
+                    await ctx.send(f'**جاري تشغيل:** {title}')
+                except Exception as e:
+                    print(f"Error during playback: {str(e)}")
+                    await ctx.send(f"حدث خطأ أثناء التشغيل: {str(e)}")
+            except Exception as e:
+                print(f"Error extracting video info: {str(e)}")
+                await ctx.send(f"حدث خطأ أثناء استخراج معلومات الفيديو: {str(e)}")
     except Exception as e:
         print(f"Error in play command: {str(e)}")
         await ctx.send("حدث خطأ أثناء تشغيل الأغنية!")
