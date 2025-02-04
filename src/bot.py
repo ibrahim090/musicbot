@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import logging
 from utils.spotify_handler import SpotifyHandler
 from utils.youtube_handler import YTDLSource
+import asyncio
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -48,7 +49,16 @@ async def play(ctx, *, query):
 
         # Join voice channel if not already in one
         if not ctx.voice_client:
-            await ctx.author.voice.channel.connect()
+            try:
+                await ctx.author.voice.channel.connect()
+                # Add a small delay to ensure connection is established
+                await asyncio.sleep(1)
+            except Exception as e:
+                return await ctx.send(f"❌ حدث خطأ أثناء الاتصال بالقناة الصوتية: {str(e)}")
+
+        # Verify voice connection
+        if not ctx.voice_client or not ctx.voice_client.is_connected():
+            return await ctx.send("❌ لم يتم الاتصال بالقناة الصوتية بشكل صحيح. الرجاء المحاولة مرة أخرى.")
 
         # Stop current audio if playing
         if ctx.voice_client.is_playing():
@@ -63,13 +73,9 @@ async def play(ctx, *, query):
                 if 'open.spotify.com' in query:
                     if 'track' in query:
                         # Handle single Spotify track
-                        track_info = await spotify_handler.get_track_info(query)
+                        track_info, error_msg = await spotify_handler.get_track_info(query)
                         if not track_info:
-                            error_msg = "❌ لم يتم العثور على المقطع في Spotify. تأكد من:\n"
-                            error_msg += "1️⃣ صحة الرابط\n"
-                            error_msg += "2️⃣ أن المقطع متاح في منطقتك\n"
-                            error_msg += "3️⃣ أن المقطع لم يتم إزالته من Spotify"
-                            await status_msg.edit(content=error_msg)
+                            await status_msg.edit(content=error_msg or "❌ حدث خطأ غير معروف")
                             return
                         
                         # Update status message
@@ -185,7 +191,10 @@ async def play(ctx, *, query):
 
 @bot.command(name='pause', help='إيقاف مؤقت')
 async def pause(ctx):
-    if ctx.voice_client and ctx.voice_client.is_playing():
+    if not ctx.voice_client or not ctx.voice_client.is_connected():
+        return await ctx.send("❌ البوت غير متصل بأي قناة صوتية!")
+    
+    if ctx.voice_client.is_playing():
         ctx.voice_client.pause()
         await ctx.send("⏸️ تم الإيقاف المؤقت")
     else:
@@ -193,7 +202,10 @@ async def pause(ctx):
 
 @bot.command(name='resume', help='استئناف التشغيل')
 async def resume(ctx):
-    if ctx.voice_client and ctx.voice_client.is_paused():
+    if not ctx.voice_client or not ctx.voice_client.is_connected():
+        return await ctx.send("❌ البوت غير متصل بأي قناة صوتية!")
+    
+    if ctx.voice_client.is_paused():
         ctx.voice_client.resume()
         await ctx.send("▶️ تم استئناف التشغيل")
     else:
@@ -201,7 +213,10 @@ async def resume(ctx):
 
 @bot.command(name='stop', help='إيقاف التشغيل')
 async def stop(ctx):
-    if ctx.voice_client:
+    if not ctx.voice_client or not ctx.voice_client.is_connected():
+        return await ctx.send("❌ البوت غير متصل بأي قناة صوتية!")
+    
+    if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
         ctx.voice_client.stop()
         await ctx.send("⏹️ تم إيقاف التشغيل")
     else:
@@ -209,11 +224,11 @@ async def stop(ctx):
 
 @bot.command(name='leave', help='مغادرة القناة الصوتية')
 async def leave(ctx):
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
-        await ctx.send("👋 تمت المغادرة")
-    else:
-        await ctx.send("❌ لست في قناة صوتية!")
+    if not ctx.voice_client or not ctx.voice_client.is_connected():
+        return await ctx.send("❌ البوت غير متصل بأي قناة صوتية!")
+    
+    await ctx.voice_client.disconnect()
+    await ctx.send("👋 تمت المغادرة")
 
 if __name__ == "__main__":
     print("Starting bot...")

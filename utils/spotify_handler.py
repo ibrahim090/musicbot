@@ -6,6 +6,8 @@ from config.config import SPOTIFY_PATTERNS
 class SpotifyHandler:
     def __init__(self, client_id=None, client_secret=None):
         self.sp = None
+        self.client_id = client_id
+        self.client_secret = client_secret
         if client_id and client_secret:
             try:
                 self.sp = spotipy.Spotify(
@@ -23,15 +25,20 @@ class SpotifyHandler:
     async def get_track_info(self, url):
         """Get track information from Spotify URL"""
         if not self.sp:
-            print("Spotify client not initialized")
-            return None
-            
+            print("Spotify client not initialized - checking credentials")
+            if not self.client_id or not self.client_secret:
+                print("Missing Spotify credentials")
+                return None, "❌ لم يتم تكوين حساب Spotify بشكل صحيح"
+            else:
+                print(f"Credentials present but client failed to initialize")
+                return None, "❌ فشل الاتصال بـ Spotify"
+        
         try:
             # Extract track ID from URL
             track_match = re.match(SPOTIFY_PATTERNS['track'], url)
             if not track_match:
                 print(f"Invalid Spotify track URL format: {url}")
-                return None
+                return None, "❌ رابط Spotify غير صالح. تأكد من نسخ الرابط بشكل صحيح"
                 
             track_id = track_match.group(1)
             print(f"Attempting to get track info for ID: {track_id}")
@@ -42,8 +49,14 @@ class SpotifyHandler:
             except spotipy.exceptions.SpotifyException as e:
                 print(f"Spotify API error: {str(e)}")
                 if "not found" in str(e).lower():
-                    print("Track not found - it may be unavailable in your region or removed")
-                return None
+                    return None, "❌ لم يتم العثور على المقطع. قد يكون غير متاح في منطقتك أو تم إزالته"
+                elif "forbidden" in str(e).lower():
+                    return None, "❌ لا يمكن الوصول إلى المقطع. تأكد من أنه متاح في منطقتك"
+                return None, f"❌ حدث خطأ في Spotify: {str(e)}"
+            
+            # Check if track is playable
+            if not track_info.get('is_playable', True):
+                return None, "❌ هذا المقطع غير متاح للتشغيل في منطقتك"
             
             # Format artist and track name for YouTube search
             artists = ", ".join([artist['name'] for artist in track_info['artists']])
@@ -59,10 +72,11 @@ class SpotifyHandler:
                 'duration_ms': track_info['duration_ms'],
                 'album_name': track_info['album']['name'],
                 'album_art': track_info['album']['images'][0]['url'] if track_info['album']['images'] else None
-            }
+            }, None
+            
         except Exception as e:
             print(f"Unexpected error getting Spotify track info: {str(e)}")
-            return None
+            return None, f"❌ حدث خطأ غير متوقع: {str(e)}"
 
     async def get_playlist_tracks(self, url):
         """Get all tracks from a Spotify playlist"""
