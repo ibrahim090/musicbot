@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = ". /opt/venv/bin/activate && pip install -r requirements.txt && pip install -e ."
+buildCommand = "python3.11 -m venv /opt/venv && . /opt/venv/bin/activate && pip install --upgrade pip && pip install wheel && pip install -r requirements.txt && pip install -e ."
 
 [deploy]
 startCommand = ". /opt/venv/bin/activate && PYTHONPATH=/app SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt python src/bot.py"

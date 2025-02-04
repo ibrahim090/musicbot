@@ -1,11 +1,13 @@
 [phases.setup]
-nixPkgs = [
-    "python311",
-    "python311Packages.pip",
-    "python311Packages.setuptools",
-    "python311Packages.wheel",
+aptPkgs = [
+    "python3.11",
+    "python3.11-dev",
+    "python3-pip",
+    "python3-venv",
     "ffmpeg",
-    "gcc",
+    "build-essential",
+    "libffi-dev",
+    "libnacl-dev",
     "ca-certificates"
 ]
 
