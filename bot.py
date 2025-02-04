@@ -7,6 +7,8 @@ import logging
 import asyncio
 import tempfile
 import platform
+import json
+from pathlib import Path
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +32,32 @@ FFMPEG_OPTIONS = {
     'options': '-vn -ar 48000 -ac 2 -b:a 192k'
 }
 
+# Get user's home directory
+HOME = str(Path.home())
+
+# Browser paths based on OS
+BROWSER_PATHS = {
+    'Windows': {
+        'chrome': os.path.join(HOME, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default'),
+        'firefox': os.path.join(HOME, 'AppData', 'Roaming', 'Mozilla', 'Firefox', 'Profiles'),
+        'edge': os.path.join(HOME, 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default'),
+    },
+    'Darwin': {  # macOS
+        'chrome': os.path.join(HOME, 'Library', 'Application Support', 'Google', 'Chrome', 'Default'),
+        'firefox': os.path.join(HOME, 'Library', 'Application Support', 'Firefox', 'Profiles'),
+        'edge': os.path.join(HOME, 'Library', 'Application Support', 'Microsoft Edge', 'Default'),
+    },
+    'Linux': {
+        'chrome': os.path.join(HOME, '.config', 'google-chrome', 'Default'),
+        'firefox': os.path.join(HOME, '.mozilla', 'firefox'),
+        'edge': os.path.join(HOME, '.config', 'microsoft-edge', 'Default'),
+    }
+}
+
+# Get current OS
+current_os = platform.system()
+print(f"Current OS: {current_os}")
+
 # YouTube DL options
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
@@ -47,7 +75,6 @@ YTDL_OPTIONS = {
     'source_address': '0.0.0.0',
     'force-ipv4': True,
     'cachedir': False,
-    'cookies-from-browser': ['chrome', 'firefox', 'edge', 'opera', 'brave', 'chromium'],
     'extractor-args': {
         'youtube': {
             'player_skip': ['webpage', 'configs'],
@@ -57,6 +84,20 @@ YTDL_OPTIONS = {
     'geo-bypass': True,
     'geo-bypass-country': 'US'
 }
+
+def get_browser_cookie_path():
+    """Get the path to browser cookies based on OS"""
+    if current_os not in BROWSER_PATHS:
+        print(f"Unsupported OS: {current_os}")
+        return None
+    
+    paths = BROWSER_PATHS[current_os]
+    for browser, path in paths.items():
+        if os.path.exists(path):
+            print(f"Found {browser} at {path}")
+            return browser, path
+    
+    return None
 
 # Initialize bot
 intents = discord.Intents.all()
@@ -76,67 +117,39 @@ class YTDLSource(discord.PCMVolumeTransformer):
     async def from_url(cls, url, *, loop=None, stream=False):
         loop = loop or asyncio.get_event_loop()
         
-        # Create a temporary directory for cookies
-        temp_dir = tempfile.mkdtemp()
-        cookies_path = os.path.join(temp_dir, 'cookies.txt')
-        
-        # Update options with cookies path
-        ytdl_opts = dict(YTDL_OPTIONS)
-        ytdl_opts['cookiefile'] = cookies_path
+        # Get browser and cookie path
+        browser_info = get_browser_cookie_path()
+        if browser_info:
+            browser, path = browser_info
+            print(f"Using {browser} cookies from {path}")
+            YTDL_OPTIONS['cookies-from-browser'] = f"{browser}:{path}"
         
         try:
-            # Try with all browsers
-            print("Attempting to extract cookies from browsers...")
-            for browser in ['chrome', 'firefox', 'edge', 'opera', 'brave', 'chromium']:
-                try:
-                    browser_opts = dict(ytdl_opts)
-                    browser_opts['cookies-from-browser'] = browser
-                    
-                    with yt_dlp.YoutubeDL(browser_opts) as ytdl:
-                        # Check if URL is a search query
-                        if not ('youtube.com' in url or 'youtu.be' in url):
-                            print(f"Searching YouTube using {browser} cookies...")
-                            url = f"ytsearch:{url}"
-
-                        # Extract video info
-                        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
-                        
-                        if 'entries' in data:
-                            data = data['entries'][0]
-
-                        filename = data['url'] if stream else ytdl.prepare_filename(data)
-                        print(f"Successfully extracted info using {browser} cookies")
-                        return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
-                        
-                except Exception as e:
-                    print(f"Error with {browser} cookies: {str(e)}")
-                    continue
-            
-            # If all browsers fail, try without cookies
-            print("All browsers failed, trying without cookies...")
-            ytdl_opts.pop('cookies-from-browser', None)
-            ytdl_opts.pop('cookiefile', None)
-            
-            with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
+            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ytdl:
+                # Check if URL is a search query
                 if not ('youtube.com' in url or 'youtu.be' in url):
+                    print("Searching YouTube...")
                     url = f"ytsearch:{url}"
-                
+
+                # Extract video info
+                print("Extracting video info...")
                 data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
                 
                 if 'entries' in data:
                     data = data['entries'][0]
 
                 filename = data['url'] if stream else ytdl.prepare_filename(data)
+                print("Successfully extracted info")
                 return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
-                    
+                
         except Exception as e:
             print(f"Error in YTDLSource.from_url: {str(e)}")
+            # Try without cookies if failed
+            if 'cookies-from-browser' in YTDL_OPTIONS:
+                print("Retrying without cookies...")
+                YTDL_OPTIONS.pop('cookies-from-browser', None)
+                return await cls.from_url(url, loop=loop, stream=stream)
             raise e
-        finally:
-            # Cleanup
-            if os.path.exists(temp_dir):
-                import shutil
-                shutil.rmtree(temp_dir)
 
 @bot.event
 async def on_ready():
