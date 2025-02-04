@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import yt_dlp as youtube_dl
 import logging
 import asyncio
+import tempfile
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG for more detailed logs
@@ -26,6 +27,9 @@ print(f"Token loaded: {token[:20]}...")
 FFMPEG_PATH = os.getenv('FFMPEG_PATH', 'ffmpeg')
 print(f"FFmpeg path: {FFMPEG_PATH}")
 
+# Create a temporary file for cookies
+cookies_path = os.path.join(tempfile.gettempdir(), 'youtube_cookies.txt')
+
 # YouTube DL Options
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -46,6 +50,8 @@ ytdl_format_options = {
     'prefer-insecure': True,
     'geo-bypass': True,
     'geo-bypass-country': 'US',
+    'cookies-from-browser': 'chrome',
+    'cookiefile': cookies_path,
     'extractor-args': {
         'youtube': {
             'player-client': ['android'],
@@ -68,6 +74,14 @@ ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 async def get_stream_url(url):
     try:
         loop = asyncio.get_event_loop()
+        # First, try to extract cookies from browser
+        try:
+            await loop.run_in_executor(None, lambda: ytdl.extract_info("https://www.youtube.com", download=False, process=False))
+            print("Successfully extracted cookies from browser")
+        except Exception as e:
+            print(f"Warning: Could not extract cookies from browser: {str(e)}")
+        
+        # Now try to get video info
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
         
         if 'entries' in data:
