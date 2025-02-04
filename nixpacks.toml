@@ -8,7 +8,8 @@ aptPkgs = [
     "build-essential",
     "libffi-dev",
     "libnacl-dev",
-    "ca-certificates"
+    "ca-certificates",
+    "openssl"
 ]
 
 [phases.install]
@@ -18,9 +19,15 @@ cmds = [
     "pip install --upgrade pip",
     "pip install wheel",
     "pip install certifi",
+    "pip install --upgrade certifi",
+    "python3.11 -m pip install --upgrade pip setuptools wheel",
+    "update-ca-certificates --fresh",
+    "export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
+    "export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
     "pip install -r requirements.txt",
-    "pip install -e ."
+    "pip install -e .",
+    "yt-dlp --update"
 ]
 
 [start]
-cmd = ". /opt/venv/bin/activate && PYTHONPATH=/app SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt python src/bot.py" 
+cmd = ". /opt/venv/bin/activate && export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && PYTHONPATH=/app python src/bot.py" 
