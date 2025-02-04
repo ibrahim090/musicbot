@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 import yt_dlp as youtube_dl
 import logging
+import asyncio
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG for more detailed logs
@@ -28,43 +29,60 @@ print(f"FFmpeg path: {FFMPEG_PATH}")
 # YouTube DL Options
 ytdl_format_options = {
     'format': 'bestaudio/best',
-    'extractaudio': True,
-    'audioformat': 'mp3',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': False,
-    'logtostderr': True,  # Changed to True for more logs
-    'quiet': False,  # Changed to False for more logs
-    'no_warnings': False,  # Changed to False for more logs
+    'logtostderr': True,
+    'quiet': False,
+    'no_warnings': False,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    # Add these options to bypass age restriction and other limitations
-    'no_check_certificate': True,
-    'http_chunk_size': 10485760,
-    'extractor_retries': 3,
-    'socket_timeout': 30,
-    'external_downloader_args': [],
-    'youtube_include_dash_manifest': False,
-    'cachedir': False
+    'force-ipv4': True,
+    'no-cache-dir': True,
+    'rm-cache-dir': True,
+    'no-check-certificate': True,
+    'prefer-insecure': True,
+    'geo-bypass': True,
+    'geo-bypass-country': 'US',
+    'extractor-args': {
+        'youtube': {
+            'player-client': ['android'],
+            'skip': ['dash', 'hls']
+        }
+    },
+    'extractor-retries': 3,
+    'http-chunk-size': '10M'
 }
-
-# Create a custom HTTP header to mimic a web browser
-custom_headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-us,en;q=0.5',
-    'Sec-Fetch-Mode': 'navigate',
-}
-ytdl_format_options['http_headers'] = custom_headers
 
 ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn'
 }
 
+# Initialize yt-dlp with updated options
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+
+# Function to get direct stream URL
+async def get_stream_url(url):
+    try:
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
+        
+        if 'entries' in data:
+            data = data['entries'][0]
+        
+        if 'url' not in data:
+            raise Exception("Could not find audio stream URL")
+            
+        return {
+            'url': data['url'],
+            'title': data.get('title', 'Unknown Title')
+        }
+    except Exception as e:
+        print(f"Error in get_stream_url: {str(e)}")
+        raise e
 
 # Bot configuration
 print("Setting up bot...")
@@ -121,18 +139,20 @@ async def play(ctx, *, url: str):
             print("Extracting video info...")
             try:
                 # Get video info and stream URL
-                data = await bot.loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
+                stream_data = await get_stream_url(url)
                 print("Successfully extracted video info")
-                
-                if 'entries' in data:
-                    # Take first item from a playlist
-                    data = data['entries'][0]
 
-                stream_url = data['url']
-                title = data['title']
+                if not stream_data['url']:
+                    await ctx.send("لم يتم العثور على رابط الصوت!")
+                    return
+
+                stream_url = stream_data['url']
+                title = stream_data['title']
                 print(f"Got stream URL for: {title}")
 
-                ctx.voice_client.stop()
+                if ctx.voice_client.is_playing():
+                    ctx.voice_client.stop()
+
                 voice_client = ctx.voice_client
                 print(f"Starting playback with FFmpeg at path: {FFMPEG_PATH}")
                 try:
