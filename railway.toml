@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = ". /opt/venv/bin/activate && pip install -r requirements.txt"
+buildCommand = ". /opt/venv/bin/activate && pip install -r requirements.txt && pip install -e ."
 
 [deploy]
-startCommand = ". /opt/venv/bin/activate && python src/bot.py"
+startCommand = ". /opt/venv/bin/activate && PYTHONPATH=/app python src/bot.py"
 restartPolicyType = "on_failure"
 healthcheckPath = "/"
 healthcheckTimeout = 100
@@ -11,4 +11,5 @@ healthcheckTimeout = 100
 [build.env]
 PYTHON_VERSION = "3.11.7"
 NIXPACKS_PYTHON_VERSION = "3.11.7"
-PATH = "/opt/venv/bin:$PATH" 
+PATH = "/opt/venv/bin:$PATH"
+PYTHONPATH = "/app" 
