@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = ". /opt/venv/bin/activate && pip install -r requirements.txt && pip install -e ."
 
 [deploy]
-startCommand = ". /opt/venv/bin/activate && PYTHONPATH=/app python src/bot.py"
+startCommand = ". /opt/venv/bin/activate && PYTHONPATH=/app SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt python src/bot.py"
 restartPolicyType = "on_failure"
 healthcheckPath = "/"
 healthcheckTimeout = 100
@@ -12,4 +12,5 @@ healthcheckTimeout = 100
 PYTHON_VERSION = "3.11.7"
 NIXPACKS_PYTHON_VERSION = "3.11.7"
 PATH = "/opt/venv/bin:$PATH"
-PYTHONPATH = "/app" 
+PYTHONPATH = "/app"
+SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt" 
