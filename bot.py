@@ -46,6 +46,7 @@ YTDL_OPTIONS = {
     'source_address': '0.0.0.0',
     'force-ipv4': True,
     'cachedir': False,
+    'cookies-from-browser': 'chrome',
     'geo-bypass': True,
     'geo-bypass-country': 'US'
 }
@@ -64,19 +65,50 @@ class YTDLSource(discord.PCMVolumeTransformer):
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
         loop = loop or asyncio.get_event_loop()
-        ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
-
+        
+        # Create a temporary directory for cookies
+        temp_dir = tempfile.mkdtemp()
+        cookies_path = os.path.join(temp_dir, 'cookies.txt')
+        
+        # Update options with cookies path
+        ytdl_opts = dict(YTDL_OPTIONS)
+        ytdl_opts['cookiefile'] = cookies_path
+        
         try:
-            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
-            
-            if 'entries' in data:
-                data = data['entries'][0]
+            # First try to extract cookies from Chrome
+            print("Attempting to extract cookies from Chrome...")
+            with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
+                try:
+                    # Extract video info
+                    data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+                    
+                    if 'entries' in data:
+                        data = data['entries'][0]
 
-            filename = data['url'] if stream else ytdl.prepare_filename(data)
-            return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
+                    filename = data['url'] if stream else ytdl.prepare_filename(data)
+                    return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
+                    
+                except Exception as e:
+                    print(f"Error with Chrome cookies: {str(e)}")
+                    # If Chrome fails, try without cookies
+                    ytdl_opts.pop('cookies-from-browser', None)
+                    ytdl_opts.pop('cookiefile', None)
+                    data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+                    
+                    if 'entries' in data:
+                        data = data['entries'][0]
+
+                    filename = data['url'] if stream else ytdl.prepare_filename(data)
+                    return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
+                    
         except Exception as e:
             print(f"Error in YTDLSource.from_url: {str(e)}")
             raise e
+        finally:
+            # Cleanup
+            if os.path.exists(temp_dir):
+                import shutil
+                shutil.rmtree(temp_dir)
 
 @bot.event
 async def on_ready():
