@@ -29,9 +29,19 @@ cmds = [
     "export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
     "wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp",
     "chmod a+rx /usr/local/bin/yt-dlp",
+    "mkdir -p /app/src",
+    "cp -r . /app/",
+    "cd /app",
     "pip install -r requirements.txt",
     "pip install -e ."
 ]
 
 [start]
-cmd = ". /opt/venv/bin/activate && cd /app && export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && PYTHONPATH=/app python src/bot.py" 
+cmd = """
+. /opt/venv/bin/activate && \
+cd /app && \
+export PYTHONPATH="${PYTHONPATH}:/app:/app/src" && \
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && \
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && \
+python src/bot.py
+""" 

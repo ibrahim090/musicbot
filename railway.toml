@@ -1,9 +1,29 @@
 [build]
 builder = "nixpacks"
-buildCommand = "python3.11 -m venv /opt/venv && . /opt/venv/bin/activate && update-ca-certificates --fresh && export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && pip install --upgrade pip certifi && pip install wheel && pip install -r requirements.txt && pip install -e ."
+buildCommand = """
+python3.11 -m venv /opt/venv && \
+. /opt/venv/bin/activate && \
+update-ca-certificates --fresh && \
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && \
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && \
+pip install --upgrade pip certifi && \
+pip install wheel && \
+pip install -r requirements.txt && \
+mkdir -p /app/src && \
+cp -r . /app/ && \
+cd /app && \
+pip install -e .
+"""
 
 [deploy]
-startCommand = ". /opt/venv/bin/activate && cd /app && export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && PYTHONPATH=/app python src/bot.py"
+startCommand = """
+. /opt/venv/bin/activate && \
+cd /app && \
+export PYTHONPATH="${PYTHONPATH}:/app:/app/src" && \
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && \
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && \
+python src/bot.py
+"""
 restartPolicyType = "on_failure"
 healthcheckPath = "/"
 healthcheckTimeout = 100
@@ -12,7 +32,7 @@ healthcheckTimeout = 100
 PYTHON_VERSION = "3.11.7"
 NIXPACKS_PYTHON_VERSION = "3.11.7"
 PATH = "/opt/venv/bin:/usr/local/bin:$PATH"
-PYTHONPATH = "/app"
+PYTHONPATH = "/app:/app/src"
 REQUESTS_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt"
 
