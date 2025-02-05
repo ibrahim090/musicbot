@@ -3,6 +3,12 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import logging
+import sys
+from pathlib import Path
+
+# Add parent directory to Python path
+sys.path.append(str(Path(__file__).parent.parent))
+
 from utils.spotify_handler import SpotifyHandler
 from utils.youtube_handler import YTDLSource
 import asyncio

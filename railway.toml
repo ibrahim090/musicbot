@@ -9,17 +9,12 @@ export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && \
 pip install --upgrade pip certifi && \
 pip install wheel && \
 pip install -r requirements.txt && \
-mkdir -p /app/src && \
-cp -r . /app/ && \
-cd /app && \
 pip install -e .
 """
 
 [deploy]
 startCommand = """
 . /opt/venv/bin/activate && \
-cd /app && \
-export PYTHONPATH="${PYTHONPATH}:/app:/app/src" && \
 export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt && \
 export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt && \
 python src/bot.py
@@ -32,7 +27,6 @@ healthcheckTimeout = 100
 PYTHON_VERSION = "3.11.7"
 NIXPACKS_PYTHON_VERSION = "3.11.7"
 PATH = "/opt/venv/bin:/usr/local/bin:$PATH"
-PYTHONPATH = "/app:/app/src"
 REQUESTS_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt"
 
