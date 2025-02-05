@@ -1,6 +1,0 @@
-python3-dev
-build-essential
-libffi-dev
-libnacl-dev
-python3-pip
-ffmpeg 
