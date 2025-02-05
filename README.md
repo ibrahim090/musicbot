@@ -12,33 +12,26 @@
 
 ## المتطلبات
 
-- Python 3.11 أو أحدث
+- Python 3.8 أو أحدث
 - FFmpeg
 - حساب مطور في Discord
 - حساب مطور في Spotify
 
 ## التثبيت
 
-1. قم بإنشاء بيئة Python افتراضية:
-```bash
-python -m venv venv
-source venv/bin/activate  # على Linux/macOS
-venv\Scripts\activate     # على Windows
-```
-
-2. قم بتثبيت المتطلبات:
+1. قم بتثبيت المتطلبات:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. قم بإنشاء ملف `.env` وأضف المتغيرات التالية:
+2. قم بإنشاء ملف `.env` وأضف المتغيرات التالية:
 ```env
 DISCORD_TOKEN=your_discord_token
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 ```
 
-4. قم بتشغيل البوت:
+3. قم بتشغيل البوت:
 ```bash
 python src/bot.py
 ```
@@ -50,27 +43,6 @@ python src/bot.py
 - `!resume` - استئناف التشغيل
 - `!stop` - إيقاف التشغيل
 - `!leave` - مغادرة القناة الصوتية
-
-## هيكل المشروع
-
-```
-.
-├── src/
-│   ├── __init__.py
-│   └── bot.py
-├── utils/
-│   ├── __init__.py
-│   ├── spotify_handler.py
-│   └── youtube_handler.py
-├── config/
-│   ├── __init__.py
-│   └── config.py
-├── .env
-├── .gitignore
-├── README.md
-├── requirements.txt
-└── setup.py
-```
 
 ## الترخيص
 
